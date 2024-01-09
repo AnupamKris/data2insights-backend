@@ -3,11 +3,12 @@ from typing import Any, Dict, List, Optional, Union
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from models import initializeAgent
+
 app = Flask(__name__)
 CORS(app)
 
 actionss = []
-file = ''
+file = ""
 agent = None
 
 df = None
@@ -15,6 +16,7 @@ df = None
 
 class BaseCallbackHandler:
     """Base callback handler that can be used to handle callbacks from langchain."""
+
     # add ignore_agent property
     # add ignore_tool property
     # add ignore_chain property
@@ -100,41 +102,80 @@ class BaseCallbackHandler:
     def on_agent_finish(self, finish, **kwargs: Any) -> Any:
         """Run on agent end."""
 
+    @property
+    def ignore_chat_model(self) -> bool:
+        """Ignore chat model callbacks."""
+        return False
 
-@app.route('/getInference', methods=['POST'])
+    @property
+    def raise_error(self) -> bool:
+        """Whether to raise an error on callback failure."""
+        return False
+
+
+@app.route("/getInference", methods=["POST"])
 def getInference():
     data = request.get_json()
     print(data)
     global agent
-    out = agent.run(data['message'],  callbacks=[BaseCallbackHandler()])
-    print(actionss)
-    while len(actionss) < 1:
-        print(".", end="")
-    mainAction1 = actionss.pop()
-    mainAction = mainAction1[1]
-    # print("main  ", mainAction1, "part \n\n\n\n", mainAction)
+    callback_handler = BaseCallbackHandler()
+    out = agent.run(data["message"])  # , callbacks=[callback_handler])
+    # print(actionss)
+    # while len(actionss) < 1:
+    #     print(".", end="")
+    # mainAction1 = actionss.pop()
+    # mainAction = mainAction1[1]
+    # # print("main  ", mainAction1, "part \n\n\n\n", mainAction)
 
-    # mainAction = "plot"
-    # out = "out"
-    if "plot" in mainAction:
-        plot = eval(mainAction)
-        plot.get_figure().savefig('plot.png')
-        return send_file('plot.png', mimetype='image/png')
-    else:
-        return jsonify({'message': out})
+    # # mainAction = "plot"
+    # # out = "out"
+    # if "plot" in mainAction:
+    #     plot = eval(mainAction)
+    #     plot.get_figure().savefig('plot.png')
+    #     return send_file('plot.png', mimetype='image/png')
+    # else:
+    return jsonify({"message": out})
 
 
-@app.route('/uploadFile', methods=['POST'])
+import os
+
+ALLOWED_EXTENSIONS = {"csv", "xlsx"}
+
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route("/uploadFile", methods=["POST"])
 def uploadFile():
-    data = request.files
-    file = data['file']
-    file.save('data.csv')
-    global agent
-    agent = initializeAgent()
     global df
-    df = pd.read_csv('data.csv')
-    return jsonify({'status': '200'})
+
+    data = request.files
+    file = data["file"]
+
+    if file and allowed_file(file.filename):
+        # Save the uploaded file with a unique name
+        base_filename, file_extension = os.path.splitext(file.filename)
+        print(base_filename, file_extension)
+        unique_filename = f"data{file_extension}"
+        file.save(unique_filename)
+
+        # Convert XLSX to CSV if the uploaded file is an XLSX file
+        if file_extension.lower() == ".xlsx":
+            csv_filename = f"data.csv"
+            df = pd.read_excel(unique_filename)
+            df.to_csv(csv_filename, index=False)
+        else:
+            csv_filename = unique_filename
+
+        global agent
+        agent = initializeAgent(csv_filename)
+        df = pd.read_csv(csv_filename)
+        print("Uploaded...")
+        return jsonify({"status": "200"})
+    else:
+        return jsonify({"error": "Invalid file format. Allowed formats: CSV, XLSX"})
 
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", debug=True, port=5000)
