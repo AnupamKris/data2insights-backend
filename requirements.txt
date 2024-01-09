@@ -1,0 +1,9 @@
+langchain_experimental
+flask
+matplotlib
+seaborn
+tabulate
+pandas
+flask-cors
+google-generativeai
+langchain-google-genai
